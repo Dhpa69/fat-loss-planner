@@ -3,9 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' https://etfhuwopqjderqutlyhk.supabase.co wss://etfhuwopqjderqutlyhk.supabase.co https://world.openfoodfacts.org https://api.nal.usda.gov; form-action 'none'">
 <meta name="theme-color" content="#0f1720">
-<title>Fat-Loss Planner — Dhaval</title>
+<title>Fat-Loss Planner</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Fat-Loss">
+<meta name="description" content="Calorie, macro, food, weight and workout planner.">
 <style>
 :root{--bg:#f4f6f9;--card:#fff;--fg:#17202b;--muted:#5d6b7a;--line:#e1e6ec;--acc:#0e8f6e;--acc2:#2f6fdb;--warn:#b7570b;--warnbg:#fff4e6;--bad:#c62f3a;--p:#2f6fdb;--f:#d98a0b;--c:#0e8f6e;--in:#f7f9fb;--shadow:0 1px 3px rgba(0,0,0,.06),0 4px 14px rgba(0,0,0,.04)}
 [data-theme=dark]{--bg:#0d131a;--card:#16202b;--fg:#e6edf3;--muted:#93a1b0;--line:#26333f;--acc:#2fc497;--acc2:#6b9cff;--warn:#f0a24b;--warnbg:#2c2113;--bad:#ff6b76;--p:#6b9cff;--f:#f0b44b;--c:#2fc497;--in:#0f1821;--shadow:none}
@@ -106,6 +114,7 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:6px 14px 30px
 canvas.sm{height:220px}
 .mgrid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));align-items:end}
 </style>
+<link rel="stylesheet" href="plus.css">
 </head>
 <body>
 <header>
@@ -631,7 +640,7 @@ var rz;window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeou
 
 // ---- export / import
 $('exportBtn').onclick=function(){
-  var data=Object.assign({app:'fat-loss-planner',version:2,exportedAt:new Date().toISOString()},S);if(window.__FLW)data.workouts=window.__FLW.get();
+  var data=Object.assign({app:'fat-loss-planner',version:2,exportedAt:new Date().toISOString()},S);if(window.__FLW)data.workouts=window.__FLW.get();if(window.__FLPLUS)data.plus=window.__FLPLUS.state;
   var b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),u=URL.createObjectURL(b),a=document.createElement('a');
   a.href=u;a.download='fat-loss-planner-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u);},1000);
 };
@@ -640,7 +649,7 @@ $('importFile').onchange=function(){
   var f=this.files[0];if(!f)return;var r=new FileReader();
   r.onload=function(){try{var d=JSON.parse(r.result);if(!d||!d.profile)throw 0;
     var wk=d.workouts||{};if(!confirm('Replace current data with this backup ('+(d.logs||[]).length+' weight entries'+(d.workouts?', '+Object.keys(wk.log||{}).length+' workout days, '+(wk.custom||[]).length+' custom routines, '+(wk.meas||[]).length+' measurements':'')+')?'))return;
-    S=normalize(d);save();applyTheme();renderInputs();render();if(d.workouts&&window.__FLW)window.__FLW.set(d.workouts);}catch(e){alert('That file is not a valid Fat-Loss Planner backup.');}};
+    S=normalize(d);save();applyTheme();renderInputs();render();if(d.workouts&&window.__FLW)window.__FLW.set(d.workouts);if(d.plus){try{localStorage.setItem('fatLossPlanner.plus.v1',JSON.stringify(d.plus));}catch(e){}location.reload();}}catch(e){alert('That file is not a valid Fat-Loss Planner backup.');}};
   r.readAsText(f);this.value='';
 };
 
@@ -1143,5 +1152,7 @@ showTab(TAB);
 })();
 </script>
 
+<script src="vendor/supabase.js"></script>
+<script src="plus.js"></script>
 </body>
 </html>
