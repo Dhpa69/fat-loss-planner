@@ -56,3 +56,11 @@ button.danger{color:var(--bad)}
 @media(max-width:420px){main{padding:10px!important;gap:10px!important}.card{padding:14px}}
 #fPrev,#fNext{flex:0 0 44px}#fDate{flex:1}
 #qaBox .row>div{flex:1}#qName{width:100%}
+.code{font:700 30px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.18em;text-align:center;padding:12px;border:2px dashed var(--acc);border-radius:14px;margin:8px 0;color:var(--acc)}
+.lnk{display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid var(--line)}
+.lnk .row{gap:6px}
+.disc0{font-size:12px;color:var(--muted);margin:10px 0 0}
+.pcard{cursor:pointer}.pn{font-size:17px}.chev{font-size:28px;color:var(--muted)}
+.flags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.flag{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:3px 9px;font-size:12px;font-weight:600}
+#tab-coach{max-width:1180px;margin:0 auto;padding:14px;display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+#tab-coach textarea,#tab-coach input{width:100%}

@@ -1,0 +1,2 @@
+[functions.flp-delete-account]
+verify_jwt = true

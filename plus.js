@@ -3,7 +3,7 @@
    Original planner data (fatLossPlanner.v1 / fatLossPlanner.workouts.v1) is read as-is and never reformatted. */
 (function(){
 'use strict';
-var VER='2.0.0',PK='fatLossPlanner.plus.v1',DAY=864e5,LB=2.2046226;
+var VER='2.1.0',PK='fatLossPlanner.plus.v1',DAY=864e5,LB=2.2046226;
 var PRO_ID='com.dhavalpatel.fatlossplanner.pro',TRIAL_ID='com.dhavalpatel.fatlossplanner.trial7',TRIAL_DAYS=7,PRICE='$9.99';
 var SB_URL='https://etfhuwopqjderqutlyhk.supabase.co',SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0Zmh1d29wcWpkZXJxdXRseWhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE5ODY4NjAsImV4cCI6MjEwNzU2Mjg2MH0.nVq3VqCYn3fRByCUle0u8_4almvp31oafR4LaHrE7TA';
 var SITE='https://dhpa69.github.io/fat-loss-planner/';
@@ -21,7 +21,7 @@ function toast(m){var t=$('pToast');t.textContent=m;t.classList.add('on');clearT
 // ---------- state + migration ----------
 var DEFP={v:2,food:{},favs:[],meals:[],recent:[],set:{eds:false,bsf:false,strengthProt:false,remind:{weigh:'07:30',meals:'19:30',on:false},health:false},
   checkins:[],pro:{owned:false,trialStart:null,trialUsed:false},updatedAt:0,lastCheckin:null};
-function normP(p){var ex=p&&{share:p.share||null,coach:p.coach||null,coachTargets:p.coachTargets||null,coachAccepted:p.coachAccepted||null,health:p.health||null,healthAt:p.healthAt||0};var d=JSON.parse(JSON.stringify(DEFP));if(!p||typeof p!=='object')return d;
+function normP(p){var ex=p&&{role:p.role||null,coachWorkout:p.coachWorkout||null,coachTargets:p.coachTargets||null,coachAccepted:p.coachAccepted||null,health:p.health||null,healthAt:p.healthAt||0};var d=JSON.parse(JSON.stringify(DEFP));if(!p||typeof p!=='object')return d;
   if(p.food&&typeof p.food==='object')d.food=p.food;['favs','meals','recent','checkins'].forEach(function(k){if(Array.isArray(p[k]))d[k]=p[k];});
   if(p.set)d.set=Object.assign(d.set,p.set,{remind:Object.assign(d.set.remind,(p.set||{}).remind||{})});
   if(p.pro)d.pro=Object.assign(d.pro,p.pro);d.updatedAt=+p.updatedAt||0;d.lastCheckin=p.lastCheckin||null;return Object.assign(d,ex);}
@@ -32,7 +32,7 @@ var P;try{P=normP(JSON.parse(localStorage.getItem(PK)));}catch(e){P=normP(null);
   if(!localStorage.getItem(PK))savePlocal();
 })();
 function savePlocal(){try{localStorage.setItem(PK,JSON.stringify(P));}catch(e){}}
-function saveP(){P.updatedAt=Date.now();savePlocal();queueSync();}
+function saveP(){P.updatedAt=Date.now();savePlocal();queueSync();if(typeof coachPublish==='function')coachPublish();}
 function S(){return window.__FLP?window.__FLP.state:null;}
 function M(){try{return window.__FLP.compute();}catch(e){return null;}}
 function W(){return window.__FLW?window.__FLW.state():null;}
@@ -172,13 +172,13 @@ function pull(){if(!sb||!user)return Promise.resolve();
     } push();});}
 function mergePro(a,b){return {owned:!!(a.owned||b.owned),trialUsed:!!(a.trialUsed||b.trialUsed),trialStart:[a.trialStart,b.trialStart].filter(Boolean).sort()[0]||null};}
 function pushTrial(){if(!sb||!user||!P.pro.trialStart)return;sb.from('flp_entitlements').insert({user_id:user.id,trial_started_at:new Date(P.pro.trialStart).toISOString()}).then(function(){});}
-function pullTrial(){if(!sb||!user)return;sb.from('flp_entitlements').select('trial_started_at').eq('user_id',user.id).maybeSingle().then(function(r){
+function pullTrial(){if(!sb||!user)return;sb.rpc('flp_trial_check').then(function(r){var t=r&&r.data&&+new Date(r.data);if(t&&(!P.pro.trialStart||t<P.pro.trialStart)){P.pro.trialStart=t;P.pro.trialUsed=true;savePlocal();renderAll();}}).catch(function(){});sb.from('flp_entitlements').select('trial_started_at').eq('user_id',user.id).maybeSingle().then(function(r){
   var t=r.data&&+new Date(r.data.trial_started_at);if(t&&(!P.pro.trialStart||t<P.pro.trialStart)){P.pro.trialStart=t;P.pro.trialUsed=true;savePlocal();renderAll();}else if(!t)pushTrial();});}
 function setSync(m){var e=$('acSync');if(e)e.textContent=m;}
-if(sb){sb.auth.onAuthStateChange(function(ev,sess){var was=user;user=sess&&sess.user||null;renderAccount();if(user&&(!was||was.id!==user.id)){pullTrial();coachFetch();coachUpdate();if(isPro())pull();}});}
+if(sb){sb.auth.onAuthStateChange(function(ev,sess){var was=user;user=sess&&sess.user||null;renderAccount();if(!user)coachReset();if(user&&(!was||was.id!==user.id)){pullTrial();coachInit();if(isPro())pull();}});}
 // mark local edits made in the original planner so sync knows which copy is newer
 ['fatLossPlanner.v1','fatLossPlanner.workouts.v1'].forEach(function(){});
-var _set=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){_set.call(this,k,v);if(this===localStorage&&(k==='fatLossPlanner.v1'||k==='fatLossPlanner.workouts.v1')){_set.call(this,'flp.localEditAt',String(Date.now()));queueSync();if(k==='fatLossPlanner.v1'||k==='fatLossPlanner.workouts.v1')setTimeout(renderHome,0);}};
+var _set=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){_set.call(this,k,v);if(this===localStorage&&(k==='fatLossPlanner.v1'||k==='fatLossPlanner.workouts.v1')){_set.call(this,'flp.localEditAt',String(Date.now()));queueSync();if(typeof coachPublish==='function')coachPublish();if(k==='fatLossPlanner.v1'||k==='fatLossPlanner.workouts.v1')setTimeout(renderHome,0);}};
 function rnd(){var a=new Uint8Array(16);crypto.getRandomValues(a);return Array.prototype.map.call(a,function(x){return x.toString(16).padStart(2,'0');}).join('');}
 function sha(s){return crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)).then(function(b){return Array.prototype.map.call(new Uint8Array(b),function(x){return x.toString(16).padStart(2,'0');}).join('');});}
 function appleSignIn(){if(!sb)return toast('Sign-in unavailable offline');var SIA=PL('SignInWithApple');
@@ -188,8 +188,9 @@ function appleSignIn(){if(!sb)return toast('Sign-in unavailable offline');var SI
 function emailSignIn(){var em=($('acEmail').value||'').trim();if(!/^\S+@\S+\.\S+$/.test(em))return setSync('Enter a valid email');
   sb.auth.signInWithOtp({email:em,options:{emailRedirectTo:SITE}}).then(function(r){setSync(r.error?'Error: '+r.error.message:'Check your email for a sign-in link'+(NATIVE?' (open it on this iPhone; the link opens the website — or enter the 6-digit code below)':''));if(!r.error&&$('acCodeRow'))$('acCodeRow').classList.remove('hide');});}
 function codeSignIn(){var em=($('acEmail').value||'').trim(),c=($('acCode').value||'').trim();sb.auth.verifyOtp({email:em,token:c,type:'email'}).then(function(r){if(r.error)setSync('Code error: '+r.error.message);});}
-function deleteAccount(){if(!user||!confirm('Delete your cloud account data? Data on this device stays.'))return;
-  sb.rpc('flp_delete_me').then(function(r){if(r.error){setSync('Delete failed: '+r.error.message);return;}sb.auth.signOut();toast('Cloud account deleted');});}
+function deleteAccount(){if(!user||!confirm('Delete your account? This removes your cloud data, coaching links and your sign-in. Data on this device stays.'))return;setSync('Deleting…');
+  sb.functions.invoke('flp-delete-account',{method:'POST'}).then(function(r){if(r.error)throw r.error;sb.auth.signOut();P.role=null;savePlocal();toast('Account deleted');})
+  .catch(function(e){sb.rpc('flp_delete_me').then(function(r2){if(r2.error){setSync('Delete failed: '+r2.error.message);return;}sb.auth.signOut();toast('Cloud data deleted');});});}
 
 // ---------- Apple Health (iOS only) ----------
 var HK=NATIVE&&CAP.registerPlugin?CAP.registerPlugin('FLPHealth'):null; // local Swift plugin in the iOS project (plugins/flp-health)
@@ -224,27 +225,94 @@ function checkinData(){var m=M()||{},rate=weeklyRate(),kc=[],i;for(i=1;i<=7;i++)
   return {rate:rate,avg:avg,cur:cur,sug:sug,msg:msg,days:kc.length};}
 function checkinDue(){return !P.lastCheckin||Date.now()-P.lastCheckin>=7*DAY;}
 
-// ---------- Coach / Doctor sharing (workouts + diet ONLY) ----------
-function coachSnapshot(){var w=window.__FLW?window.__FLW.get():{},food={},i;for(i=0;i<60;i++){var d=today(-i);if(P.food[d]&&P.food[d].length)food[d]=P.food[d].map(function(x){return {name:x.name,kcal:x.kcal,p:x.p,c:x.c,f:x.f,fib:x.fib,qty:x.qty,meal:x.meal};});}
-  var T=targets();delete w.meas; // body measurements are NOT shared
-  return {v:1,at:Date.now(),targets:{kcal:r0(T.kcal),p:r0(T.p),c:r0(T.c),f:r0(T.f),fib:r0(T.fib)},food:food,meals:P.meals,workouts:{sel:w.sel,custom:w.custom,tpl:w.tpl,extra:w.extra,log:w.log}};}
-function coachShare(){if(!sb||!user){toast('Sign in first (Me → Account)');return;}var name=prompt('Coach or doctor name (optional)','');if(name===null)return;
-  var tok=rnd()+rnd();sb.from('flp_shares').insert({token:tok,user_id:user.id,coach_name:name||null,snapshot:coachSnapshot()}).then(function(r){
-    if(r.error){toast('Could not create link: '+r.error.message);return;}P.share={token:tok,name:name};saveP();renderCoach();shareLink();});}
-function coachLink(){return SITE+'coach.html#'+P.share.token;}
-function shareLink(){var u=coachLink(),SH=PL('Share');if(SH)SH.share({title:'My workouts & diet',text:'View my Fat-Loss Planner workouts and diet:',url:u}).catch(function(){});
-  else if(navigator.share)navigator.share({title:'My workouts & diet',url:u}).catch(function(){});else{try{navigator.clipboard.writeText(u);toast('Link copied');}catch(e){prompt('Copy this link',u);}}}
-function coachUpdate(){if(!sb||!user||!P.share)return;sb.from('flp_shares').update({snapshot:coachSnapshot(),updated_at:new Date().toISOString()}).eq('token',P.share.token).then(function(){});}
-function coachFetch(){if(!sb||!user||!P.share)return;sb.from('flp_shares').select('coach_targets,coach_note,coach_updated_at,revoked').eq('token',P.share.token).maybeSingle().then(function(r){var d=r.data;if(!d)return;P.coach={t:d.coach_targets,note:d.coach_note,at:d.coach_updated_at};savePlocal();renderCoach();});}
-function coachStop(){if(!P.share||!confirm('Stop sharing? The link will stop working.'))return;sb.from('flp_shares').delete().eq('token',P.share.token).then(function(){P.share=null;P.coach=null;saveP();renderCoach();toast('Sharing stopped');});}
-function coachAccept(){var c=P.coach&&P.coach.t;if(!c||!c.kcal)return;var s=S();s.override=c.kcal;localStorage.setItem('fatLossPlanner.v1',JSON.stringify(s));P.coachTargets=c;P.coachAccepted=P.coach.at;saveP();window.__FLP.render();renderAll();toast('Coach targets applied');}
-function renderCoach(){var el=$('coachBox');if(!el)return;var h='<div class="hint">Share a private, read-only link with your coach or doctor. It shows <b>only your diet</b> (food log, calories, macros, saved meals) and <b>workouts</b> (plan, routines, logged sets, PRs). Weight, body measurements, Apple Health data and EDS / blood-sugar settings are never shared.</div>';
-  if(!user)h+='<div class="hint">Sign in under Account to start sharing.</div>';
-  else if(!P.share)h+='<button class="pri" data-act="coachShare">Create share link</button>';
-  else{h+='<div class="hint">Shared with <b>'+esc(P.share.name||'your coach')+'</b>. The link updates when you open the app.</div><div class="row"><button data-act="coachLink">Send link again</button><button class="danger" data-act="coachStop">Stop sharing</button></div>';
-    var c=P.coach;if(c&&c.t&&c.t.kcal){h+='<div class="ok" style="margin-top:8px"><b>Targets from '+esc(P.share.name||'your coach')+'</b>: '+c.t.kcal+' kcal · P '+c.t.p+' g · C '+c.t.c+' g · F '+c.t.f+' g'+(c.t.fib?' · fiber '+c.t.fib+' g':'')+(c.note?'<br>“'+esc(c.note)+'”':'')+'</div>'+(P.coachAccepted===c.at?'<div class="hint">Applied ✓</div>':'<button class="pri" data-act="coachAccept">Use these targets</button>');}}
-  el.innerHTML=h;}
-
+// ---------- Coach / Doctor mode (two-sided). Wellness & coaching only — diet + workouts. Free. ----------
+var CO={role:null,name:'',links:[],items:[],log:[],invite:null,patients:[],cur:null,err:''};
+var COACH_NOTE='A wellness & coaching tool, not a medical record. It is not a HIPAA-covered service — please don\'t share medical information here.';
+function rpc(fn,args){if(!sb||!user)return Promise.reject(new Error('Sign in first'));return sb.rpc(fn,args||{}).then(function(r){if(r.error)throw r.error;return r.data;});}
+function coachReset(){CO={role:null,name:'',links:[],items:[],log:[],invite:null,patients:[],cur:null,err:''};P.role=null;savePlocal();updCoachTab();renderCoach();}
+function coachInit(){rpc('flp_my_profile').then(function(pr){CO.role=pr&&pr.role||null;CO.name=pr&&pr.name||'';P.role=CO.role;savePlocal();updCoachTab();return coachRefresh();}).catch(function(e){CO.err=e.message;renderCoach();});}
+function coachRefresh(){if(CO.role==='patient')return Promise.all([rpc('flp_patient_links'),rpc('flp_my_items'),rpc('flp_access_log_mine')]).then(function(r){CO.links=r[0]||[];if(CO.links.some(function(l){return l.status==='pending'||Date.now()-new Date(l.consented_at||0)<6e5;}))CO.invite=null;CO.items=r[1]||[];CO.log=r[2]||[];CO.err='';renderAll();if(CO.links.some(function(l){return l.status==='active';}))coachPublish();}).catch(function(e){CO.err=e.message;renderCoach();});
+  if(CO.role==='coach')return rpc('flp_coach_patients').then(function(r){CO.patients=r||[];CO.err='';renderCoach();renderClients();}).catch(function(e){CO.err=e.message;renderClients();});
+  renderCoach();return Promise.resolve();}
+function shareData(){var w=window.__FLW?window.__FLW.get():{},food={},i;for(i=0;i<60;i++){var d=today(-i);if(P.food[d]&&P.food[d].length)food[d]=P.food[d].map(function(x){return {name:x.name,kcal:x.kcal,p:x.p,c:x.c,f:x.f,fib:x.fib,qty:x.qty,meal:x.meal};});}
+  var T=targets();return {at:Date.now(),targets:{kcal:r0(T.kcal),p:r0(T.p),c:r0(T.c),f:r0(T.f),fib:r0(T.fib)},food:food,meals:P.meals,workouts:{sel:w.sel,custom:w.custom,tpl:w.tpl,extra:w.extra,log:w.log}};} // no weight, measurements, Health or medical modes
+function wkDone(d){var w=W();if(!w||!w.log||!w.log[d])return 0;var n=0,L=w.log[d];for(var k in L){var ex=(L[k]&&L[k].ex)||[];if(ex.some(function(e){return (e.sets||[]).some(function(x){return x.d;});}))n++;}return n;}
+function shareSummary(){var T=targets(),fd=0,sum=0,ph=0,wk=0,last=null,i;for(i=0;i<7;i++){var d=today(-i),t=totals(d);if(t.kcal>0){fd++;sum+=t.kcal;if(t.p>=T.p*0.9)ph++;}wk+=wkDone(d);}
+  for(i=0;i<120;i++){var dd=today(-i);if(dayFood(dd).length||wkDone(dd)){last=dd;break;}}
+  return {last_log:last,streak:streak(),food_days_7:fd,avg_kcal_7:fd?r0(sum/fd):null,kcal_target:r0(T.kcal),workouts_7:wk,protein_hit_7:ph};}
+var pubT;function coachPublish(){if(CO.role!=='patient'||!CO.links.some(function(l){return l.status==='active';}))return;clearTimeout(pubT);pubT=setTimeout(function(){rpc('flp_publish',{p_data:shareData(),p_summary:shareSummary()}).catch(function(){});},1200);}
+function fmtAgo(ds){if(!ds)return 'never';var n=Math.round((tOf(today())-tOf(ds))/DAY);return n<=0?'today':n===1?'yesterday':n+' days ago';}
+function flags(s){var f=[];if(!s)return f;if((s.food_days_7||0)<4)f.push('Logging gaps');if(s.avg_kcal_7&&s.kcal_target&&s.avg_kcal_7>s.kcal_target*1.1)f.push('Over calories');if(s.avg_kcal_7&&s.kcal_target&&s.avg_kcal_7<s.kcal_target*0.75)f.push('Eating very low');if(!s.workouts_7)f.push('No workouts this week');if(s.food_days_7&&(s.protein_hit_7||0)<Math.ceil(s.food_days_7/2))f.push('Low protein');return f;}
+function itemText(it){var b=it.body||{};if(it.kind==='targets')return b.kcal+' kcal · P '+b.p+' g · C '+b.c+' g · F '+b.f+' g'+(b.fib?' · fiber '+b.fib+' g':'')+(b.note?' — “'+esc(b.note)+'”':'');
+  if(it.kind==='workout')return (b.per_week||'?')+' workouts/week'+(b.minutes?' · '+b.minutes+' min each':'')+(b.note?' — “'+esc(b.note)+'”':'');return '“'+esc(b.text)+'”';}
+function acceptItem(it){if(it.kind==='targets'){var b=it.body,s=S();if(b.kcal){s.override=b.kcal;localStorage.setItem('fatLossPlanner.v1',JSON.stringify(s));if(window.__FLP)window.__FLP.render();}P.coachTargets=b;P.coachAccepted=true;}
+  if(it.kind==='workout')P.coachWorkout=it.body;saveP();}
+function renderCoach(){var el=$('coachBox');if(!el)return;var h='<div class="hint">Link with your coach or doctor to share <b>only your diet and workouts</b> — never weight, body measurements, Apple Health data or EDS / blood-sugar settings. Coach mode is free.</div>';
+  if(!sb){el.innerHTML=h+'<div class="hint">Unavailable offline.</div>';return;}
+  if(!user){el.innerHTML=h+'<div class="hint">Sign in above (Apple or email) to use coaching.</div><p class="disc0">'+COACH_NOTE+'</p>';return;}
+  if(CO.err)h+='<div class="warn">'+esc(CO.err)+'</div>';
+  if(!CO.role){el.innerHTML=h+'<h3>How will you use coaching?</h3><div class="row"><button class="pri" data-act="coRoleP">I\'m a client / patient</button><button data-act="coRoleC">I\'m a coach / doctor</button></div><p class="disc0">'+COACH_NOTE+'</p>';return;}
+  if(CO.role==='coach'){el.innerHTML=h+'<div class="hint">You are set up as <b>Coach / Doctor</b> ('+esc(CO.name)+'). Your clients are in the <b>🩺 Clients</b> tab.</div><div class="row"><button class="pri" data-go="coach">Open Clients</button><button class="sm" data-act="coSwitch">Switch role</button></div><p class="disc0">'+COACH_NOTE+'</p>';return;}
+  var act=CO.links.filter(function(l){return l.status==='active';}),pend=CO.links.filter(function(l){return l.status==='pending';});
+  h+='<h3>Invite your coach</h3>'+(CO.invite?'<div class="code">'+esc(CO.invite)+'</div><div class="hint">Give this code to your coach. They enter it in their app (Clients tab). It works once and expires in 48 hours. Nothing is shared until you approve.</div><button class="sm" data-act="coShareCode">Share code</button>':'<button class="pri" data-act="coInvite">Create invite code</button>');
+  if(pend.length)h+='<h3>Waiting for your OK</h3>'+pend.map(function(l){return '<div class="lnk"><div><b>'+esc(l.coach_name)+'</b> wants to see your diet &amp; workouts.</div><div class="row"><button class="pri sm" data-act="coApprove" data-id="'+l.id+'">Allow</button><button class="sm" data-act="coDecline" data-id="'+l.id+'">Decline</button></div></div>';}).join('');
+  h+='<h3>Who has access</h3>'+(act.length?act.map(function(l){return '<div class="lnk"><div><b>'+esc(l.coach_name)+'</b><div class="hint">Since '+new Date(l.consented_at).toLocaleDateString()+' · sees diet &amp; workouts only</div></div><button class="sm danger" data-act="coRevoke" data-id="'+l.id+'">Revoke</button></div>';}).join(''):'<div class="hint">Nobody. Your data is private.</div>');
+  var pi=CO.items.filter(function(i){return i.status==='pending';}),oi=CO.items.filter(function(i){return i.status!=='pending';}).slice(0,8);
+  if(pi.length)h+='<h3>From your coach</h3>'+pi.map(function(it){return '<div class="lnk"><div><b>'+esc(it.coach_name)+'</b> suggests '+(it.kind==='targets'?'daily targets':'a workout goal')+':<div>'+itemText(it)+'</div></div><div class="row"><button class="pri sm" data-act="coAccept" data-id="'+it.id+'">Accept</button><button class="sm" data-act="coRefuse" data-id="'+it.id+'">Decline</button></div></div>';}).join('');
+  if(oi.length)h+='<details><summary>Coach notes &amp; history</summary>'+oi.map(function(it){return '<div class="hint">'+new Date(it.created_at).toLocaleDateString()+' · '+esc(it.coach_name)+' · '+(it.kind==='note'?'Note: ':it.kind+' ('+it.status+'): ')+itemText(it)+'</div>';}).join('')+'</details>';
+  h+='<details><summary>Access log</summary>'+(CO.log.length?CO.log.map(function(x){return '<div class="hint">'+new Date(x.at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' · '+esc(x.who)+' · '+esc(x.action)+'</div>';}).join(''):'<div class="hint">No activity yet.</div>')+'</details>';
+  el.innerHTML=h+'<div class="row" style="margin-top:8px"><button class="sm" data-act="coRefresh">Refresh</button><button class="sm" data-act="coSwitch">Switch role</button></div><p class="disc0">'+COACH_NOTE+'</p>';}
+// ---- coach side ----
+function updCoachTab(){var tabs=$('tabs');if(!tabs)return;var b=tabs.querySelector('[data-tab="coach"]');if(CO.role==='coach'&&!b)tabs.insertAdjacentHTML('beforeend','<button data-tab="coach">🩺<span>Clients</span></button>');if(CO.role!=='coach'&&b){b.remove();if(!$('tab-coach').classList.contains('hide'))window.__FLPshow('home');}}
+function renderClients(){var el=$('tab-coach');if(!el||el.classList.contains('hide'))return;if(CO.cur){renderPatient();return;}
+  var h='<section class="card wide"><h2>🩺 My clients</h2><div class="row"><input id="coCode" placeholder="Enter invite code" autocapitalize="characters" maxlength="8"><button class="pri" data-act="coRedeem" style="flex:0 0 auto">Link</button></div><div class="hint">Your client creates the code in their app (Me → Coach / Doctor) and must approve the link.</div>'+(CO.err?'<div class="warn">'+esc(CO.err)+'</div>':'')+'</section>';
+  h+=CO.patients.length?CO.patients.map(function(p){var s=p.summary||{},f=flags(s);return '<section class="card pcard" '+(p.status==='active'?'data-act="coOpen" data-id="'+p.patient_id+'"':'')+'><div class="hrow"><div><b class="pn">'+esc(p.name)+'</b><div class="hint">'+(p.status==='pending'?'⏳ Waiting for client approval':'Last log: '+fmtAgo(s.last_log)+' · 🔥 '+(s.streak||0)+'-day streak')+'</div></div>'+(p.status==='active'?'<span class="chev">›</span>':'')+'</div>'+
+    (p.status==='active'?'<div class="stats"><div class="stat"><div class="v">'+(s.food_days_7||0)+'/7</div><div class="l">Days food logged</div></div><div class="stat"><div class="v">'+(s.avg_kcal_7||'—')+'</div><div class="l">Avg kcal (target '+(s.kcal_target||'—')+')</div></div><div class="stat"><div class="v">'+(s.workouts_7||0)+'</div><div class="l">Workouts (7 days)</div></div><div class="stat"><div class="v">'+(s.protein_hit_7||0)+'/'+(s.food_days_7||0)+'</div><div class="l">Protein goal hit</div></div></div>'+(f.length?'<div class="flags">'+f.map(function(x){return '<span class="flag">⚠️ '+x+'</span>';}).join('')+'</div>':'<div class="ok">✓ On track</div>'):'')+'</section>';}).join(''):'<section class="card wide"><p class="hint">No clients yet. Ask a client for their invite code.</p></section>';
+  el.innerHTML=h+'<p class="disc">'+COACH_NOTE+' You see only diet and workouts your client chooses to share; every view is recorded in their access log.</p>';}
+function openPatient(id){rpc('flp_coach_patient',{p_patient:id}).then(function(d){CO.cur={id:id,d:d};renderClients();window.scrollTo(0,0);}).catch(function(e){toast(e.message);});}
+function barChart(cv,vals,labels,target,color){if(!cv)return;var dpr=window.devicePixelRatio||1,w=cv.clientWidth||320,h=150;cv.width=w*dpr;cv.height=h*dpr;var x=cv.getContext('2d');x.scale(dpr,dpr);var cs=getComputedStyle(document.documentElement);
+  var mx=Math.max.apply(0,vals.concat([target||0,1]))*1.12,n=vals.length,bw=(w-10)/n;
+  vals.forEach(function(v,i){var bh=v/mx*(h-24);x.fillStyle=v&&target&&v>target*1.1?cs.getPropertyValue('--bad'):color;x.fillRect(6+i*bw+bw*0.15,h-16-bh,bw*0.7,bh);});
+  x.fillStyle=cs.getPropertyValue('--muted');x.font='10px -apple-system,sans-serif';labels.forEach(function(l,i){if(n<=8||i%2===0)x.fillText(l,6+i*bw+bw*0.1,h-3);});
+  if(target){var y=h-16-target/mx*(h-24);x.strokeStyle=cs.getPropertyValue('--fg');x.setLineDash([4,4]);x.beginPath();x.moveTo(4,y);x.lineTo(w-4,y);x.stroke();x.setLineDash([]);x.fillText('target '+target,w-70,y-3);}}
+function renderPatient(){var el=$('tab-coach'),c=CO.cur,d=(c.d&&c.d.data)||{},T=d.targets||{},food=d.food||{},wl=(d.workouts&&d.workouts.log)||{},i;
+  var days=[],kc=[],pr=[],lab=[];for(i=13;i>=0;i--){var dd=today(-i),t={k:0,p:0};(food[dd]||[]).forEach(function(x){var q=x.qty||1;t.k+=x.kcal*q;t.p+=(x.p||0)*q;});days.push(dd);kc.push(r0(t.k));pr.push(r0(t.p));lab.push(dd.slice(8));}
+  var wk=[],wl2=[];for(i=5;i>=0;i--){var n=0;for(var j=0;j<7;j++){var dd2=today(-(i*7+j)),L=wl[dd2]||{};for(var k in L){if(((L[k]&&L[k].ex)||[]).some(function(e){return (e.sets||[]).some(function(z){return z.d;});}))n++;}}wk.push(n);wl2.push(i?'-'+i+'w':'now');}
+  var sess=[],prs={};Object.keys(wl).sort().reverse().forEach(function(dd){Object.keys(wl[dd]).forEach(function(k){var ex=((wl[dd][k]||{}).ex||[]).filter(function(e){return (e.sets||[]).some(function(z){return z.d;});});if(ex.length)sess.push({d:dd,t:ex.map(function(e){var st=e.sets.filter(function(z){return z.d;});return e.n+' '+st.length+'×'+(st[0].r||'')+(st[0].w?' @'+st[0].w:'');}).join(' · ')});
+    ex.forEach(function(e){e.sets.forEach(function(z){if(z.d&&+z.w>0){var r=parseFloat(z.r)||1,v=r>1?z.w*(1+r/30):+z.w;if(!prs[e.n]||v>prs[e.n].v)prs[e.n]={v:v,w:z.w,r:z.r};}});});});});
+  var fd=Object.keys(food).sort().reverse().slice(0,5),items=(c.d&&c.d.items)||[];
+  var h='<section class="card wide"><div class="hrow"><button class="sm" data-act="coBack">‹ Clients</button><div style="text-align:right"><b class="pn">'+esc(c.d.name)+'</b><div class="hint">Updated '+(c.d.updated_at?new Date(c.d.updated_at).toLocaleString():'— (client hasn\'t synced yet)')+'</div></div></div><div class="hint" style="margin-top:6px">Current targets: '+(T.kcal||'—')+' kcal · P '+(T.p||'—')+' · C '+(T.c||'—')+' · F '+(T.f||'—')+' g</div></section>'+
+   '<section class="card"><h2>Calories · 14 days</h2><canvas id="cvK" style="width:100%;height:150px"></canvas></section><section class="card"><h2>Protein g · 14 days</h2><canvas id="cvP" style="width:100%;height:150px"></canvas></section><section class="card"><h2>Workouts per week</h2><canvas id="cvW" style="width:100%;height:150px"></canvas></section>'+
+   '<section class="card"><h2>Recent food</h2>'+(fd.length?fd.map(function(dd){var tk=food[dd].reduce(function(a,x){return a+x.kcal*(x.qty||1);},0);return '<div class="fitem"><div class="fn"><b>'+dd+' · '+r0(tk)+' kcal</b><div class="hint">'+esc(food[dd].map(function(x){return x.name;}).join(', '))+'</div></div></div>';}).join(''):'<div class="hint">No food logged.</div>')+'</section>'+
+   '<section class="card"><h2>Recent workouts</h2>'+(sess.length?sess.slice(0,6).map(function(x){return '<div class="hint"><b>'+x.d+'</b> · '+esc(x.t)+'</div>';}).join(''):'<div class="hint">No completed workouts.</div>')+(Object.keys(prs).length?'<h3>PRs (est. 1RM)</h3>'+Object.keys(prs).slice(0,8).map(function(n){return '<div class="hint">'+esc(n)+': '+prs[n].w+' × '+esc(prs[n].r)+' ≈ '+r0(prs[n].v)+'</div>';}).join(''):'')+'</section>'+
+   '<section class="card"><h2>Set daily targets</h2><div class="row f"><div><label>kcal</label><input id="ctK" type="number" value="'+(T.kcal||'')+'"></div><div><label>Protein g</label><input id="ctP" type="number" value="'+(T.p||'')+'"></div></div><div class="row f"><div><label>Carbs g</label><input id="ctC" type="number" value="'+(T.c||'')+'"></div><div><label>Fat g</label><input id="ctF" type="number" value="'+(T.f||'')+'"></div><div><label>Fiber g</label><input id="ctFi" type="number" value="'+(T.fib||'')+'"></div></div><input id="ctN" placeholder="Why (optional)"><button class="pri wide" data-act="coSendT">Send targets</button><div class="hint">Your client sees this and can accept or decline.</div></section>'+
+   '<section class="card"><h2>Set workout goal</h2><div class="row f"><div><label>Workouts / week</label><input id="cwN" type="number" value="3"></div><div><label>Minutes each</label><input id="cwM" type="number" value="45"></div></div><input id="cwT" placeholder="e.g. 2 strength + 1 walk"><button class="pri wide" data-act="coSendW">Send workout goal</button></section>'+
+   '<section class="card"><h2>Leave a note</h2><textarea id="cnT" rows="3" placeholder="Encouragement or tips"></textarea><button class="wide" data-act="coSendN">Send note</button></section>'+
+   '<section class="card wide"><h2>Sent</h2>'+(items.length?items.map(function(it){return '<div class="hint">'+new Date(it.created_at).toLocaleDateString()+' · '+it.kind+' · <b>'+(it.status==='info'?'note':it.status)+'</b> · '+itemText(it)+'</div>';}).join(''):'<div class="hint">Nothing sent yet.</div>')+'<button class="sm danger" data-act="coLeave" data-id="'+c.id+'" style="margin-top:8px">Stop coaching this client</button></section>';
+  el.innerHTML=h+'<p class="disc">'+COACH_NOTE+'</p>';
+  var cs=getComputedStyle(document.documentElement);barChart($('cvK'),kc,lab,T.kcal,cs.getPropertyValue('--acc'));barChart($('cvP'),pr,lab,T.p,cs.getPropertyValue('--p'));barChart($('cvW'),wk,wl2,null,cs.getPropertyValue('--f'));}
+function coachAct(a,t){var id=t.getAttribute('data-id');function done(m){return function(){if(m)toast(m);coachRefresh();};}function fail(e){toast(e.message||String(e));}
+  if(a==='coRoleP'||a==='coRoleC'){var nm=prompt(a==='coRoleC'?'Your name as clients will see it (e.g. Coach Sam, Dr. Lee)':'Your first name (your coach sees this)','');if(nm===null)return true;
+    rpc('flp_set_role',{p_role:a==='coRoleC'?'coach':'patient',p_name:nm}).then(function(r){CO.role=r.role;CO.name=r.name;P.role=r.role;savePlocal();updCoachTab();coachRefresh();toast('Saved');}).catch(fail);return true;}
+  if(a==='coSwitch'){CO.role=null;renderCoach();return true;}
+  if(a==='coRefresh'){coachRefresh();return true;}
+  if(a==='coInvite'){rpc('flp_create_invite').then(function(c){CO.invite=c;renderCoach();}).catch(fail);return true;}
+  if(a==='coShareCode'){var txt='My Fat-Loss Planner coaching code: '+CO.invite+' (open the app → 🩺 Clients → enter code)';var SH=PL('Share');if(SH)SH.share({text:txt}).catch(function(){});else if(navigator.share)navigator.share({text:txt}).catch(function(){});else{try{navigator.clipboard.writeText(CO.invite);toast('Code copied');}catch(e){}}return true;}
+  if(a==='coApprove'){if(!confirm('Allow this coach to see your food log, targets, saved meals and workouts? You can revoke at any time.'))return true;rpc('flp_set_link',{p_link:id,p_action:'approve'}).then(done('Access allowed')).catch(fail);return true;}
+  if(a==='coDecline'){rpc('flp_set_link',{p_link:id,p_action:'decline'}).then(done('Declined')).catch(fail);return true;}
+  if(a==='coRevoke'){if(!confirm('Revoke access? Your coach will no longer see your data.'))return true;rpc('flp_set_link',{p_link:id,p_action:'revoke'}).then(done('Access revoked')).catch(fail);return true;}
+  if(a==='coAccept'||a==='coRefuse'){var it=CO.items.filter(function(x){return x.id===id;})[0];rpc('flp_respond',{p_item:id,p_status:a==='coAccept'?'accepted':'declined'}).then(function(){if(a==='coAccept'&&it)acceptItem(it);done(a==='coAccept'?'New goal applied':'Declined')();}).catch(fail);return true;}
+  if(a==='coRedeem'){var code=($('coCode').value||'').trim();if(!code)return true;rpc('flp_redeem_invite',{p_code:code}).then(function(r){toast('Request sent to '+r.patient_name+' — waiting for their approval');coachRefresh();}).catch(function(e){CO.err=e.message;renderClients();});return true;}
+  if(a==='coOpen'){openPatient(id);return true;}
+  if(a==='coBack'){CO.cur=null;coachRefresh();return true;}
+  if(a==='coLeave'){var lk=CO.patients.filter(function(p){return p.patient_id===id;})[0];if(!lk||!confirm('Stop coaching this client?'))return true;rpc('flp_set_link',{p_link:lk.link_id,p_action:'leave'}).then(function(){CO.cur=null;coachRefresh();}).catch(fail);return true;}
+  if(a==='coSendT'||a==='coSendW'||a==='coSendN'){var pid=CO.cur.id,body,kind;function v(i){return +$(i).value||null;}
+    if(a==='coSendT'){kind='targets';body={kcal:v('ctK'),p:v('ctP'),c:v('ctC'),f:v('ctF'),fib:v('ctFi'),note:$('ctN').value};if(!body.kcal){toast('Enter calories');return true;}}
+    else if(a==='coSendW'){kind='workout';body={per_week:v('cwN'),minutes:v('cwM'),note:$('cwT').value};}
+    else{kind='note';body={text:$('cnT').value};if(!body.text.trim())return true;}
+    rpc('flp_coach_send',{p_patient:pid,p_kind:kind,p_body:body}).then(function(){toast('Sent');openPatient(pid);}).catch(fail);return true;}
+  return false;}
+setInterval(function(){if(user&&CO.role)coachRefresh();},120000);
 // ---------- rendering ----------
 function ring(val,tgt,label,cls){var pct=tgt?Math.min(1,val/tgt):0,C=2*Math.PI*30;return '<div class="ring '+(cls||'')+'"><svg viewBox="0 0 72 72"><circle cx="36" cy="36" r="30" class="rb"/><circle cx="36" cy="36" r="30" class="rf" stroke-dasharray="'+(pct*C)+' '+C+'" transform="rotate(-90 36 36)"/></svg><div class="rv"><b>'+r0(val)+'</b><span>/'+r0(tgt)+'</span></div><div class="rl">'+label+'</div></div>';}
 function bar(lbl,v,t,cls,u){var pct=t?Math.min(100,v/t*100):0;return '<div class="mb"><div class="mbl"><span>'+lbl+'</span><span>'+r0(v)+' / '+r0(t)+(u||'g')+'</span></div><div class="mbt"><div class="mbf '+cls+(v>t*1.05?' over':'')+'" style="width:'+pct+'%"></div></div></div>';}
@@ -260,6 +328,8 @@ function renderHome(){var el=$('tab-home');if(!el||el.classList.contains('hide')
   var ci=checkinData();html+='<section class="card"><h2>Weekly check-in '+(isPro()?'':'<span class="pill pro">PRO</span>')+'</h2>'+(isPro()?'<p>'+esc(ci.msg)+'</p>'+(ci.sug?'<div class="row"><button class="pri" data-act="ciApply">Use '+ci.sug+' kcal/day</button><button data-act="ciKeep">Keep '+r0(ci.cur)+'</button></div>':(checkinDue()?'<button data-act="ciKeep">Mark check-in done</button>':''))+'<div class="hint">'+(P.lastCheckin?'Last check-in '+new Date(P.lastCheckin).toLocaleDateString():'Do this once a week, after a morning weigh-in.')+'</div>':'<p class="hint">Every week, the app looks at your trend and food log and suggests a small calorie change if you\'ve stalled.</p><button data-pro="Weekly smart check-in">Unlock</button>')+'</section>';
   // health
   if(NATIVE)html+='<section class="card"><h2>Apple Health '+(isPro()?'':'<span class="pill pro">PRO</span>')+'</h2>'+(P.set.health&&isPro()?'<div class="stats"><div class="stat"><div class="v">'+(h.steps&&h.steps[td]?r0(h.steps[td]).toLocaleString():'—')+'</div><div class="l">Steps today</div></div><div class="stat"><div class="v">'+(h.act&&h.act[td]?r0(h.act[td]):'—')+'</div><div class="l">Active kcal</div></div></div>'+((h.wk&&h.wk[td])||[]).map(function(w){return '<div class="hint">🏃 '+esc(w.name)+' · '+w.min+' min · '+w.kcal+' kcal</div>';}).join('')+'<button class="sm" data-act="health">Sync now</button>':'<p class="hint">Bring in weight, steps, workouts and active energy automatically.</p><button data-act="health">Connect Apple Health</button>')+'</section>';
+  var pend=(CO.items||[]).filter(function(i){return i.status==='pending';}).length,cw=P.coachWorkout,wk7=0;for(var q=0;q<7;q++)wk7+=wkDone(today(-q));
+  if(pend||cw)html+='<section class="card"><h2>🩺 Coach</h2>'+(pend?'<p><b>'+pend+' new suggestion'+(pend>1?'s':'')+'</b> from your coach.</p><button class="pri" data-go="me">Review</button>':'')+(cw?'<div class="hint">Workout goal: <b>'+wk7+' / '+cw.per_week+'</b> this week'+(cw.minutes?' · '+cw.minutes+' min each':'')+(cw.note?' — '+esc(cw.note):'')+'</div>':'')+'</section>';
   // personalization
   if(P.set.eds&&isPro()&&exNames.length){var sw=exNames.filter(function(n){return SWAPS[n];});html+='<section class="card"><h2>🦴 Joint-friendly swaps for today</h2>'+(sw.length?'<ul class="swaps">'+sw.map(function(n){return '<li><s>'+esc(n)+'</s> → <b>'+esc(SWAPS[n])+'</b></li>';}).join('')+'</ul>':'<p class="hint">Today\'s exercises are already joint-friendly.</p>')+'<div class="hint">Move slowly, stop well short of end range, and skip anything that causes pain or instability.</div></section>';}
   if(P.set.bsf&&isPro())html+='<section class="card"><h2>🩸 Blood-sugar-friendly</h2>'+bar('Carbs',t.c,T.c,'c')+bar('Fiber',t.fib,T.fib,'fib')+'<div class="hint">Carbs are kept to about 35% of calories and fiber to 35 g+. Tips: pair carbs with protein, eat veggies first, walk 10 minutes after meals. An A1c of 5.7% is the bottom of the range the ADA calls prediabetes — talk to your doctor about your own targets.</div></section>';
@@ -284,12 +354,12 @@ function renderAccount(){var el=$('acBox');if(!el)return;var h='<div class="hint
   if(NATIVE)h+='<button data-act="restore">Restore Purchases</button>';
   h+='<h3>Cloud sync '+(isPro()?'':'<span class="pill pro">PRO</span>')+'</h3>';
   if(!sb)h+='<div class="hint">Cloud sign-in is unavailable right now.</div>';
-  else if(user)h+='<div class="hint">Signed in as <b>'+esc(user.email||'Apple ID')+'</b></div><div class="row"><button data-act="syncNow">Sync now</button><button data-act="signOut">Sign out</button></div><button class="sm danger" data-act="delAcct">Delete cloud account</button>';
+  else if(user)h+='<div class="hint">Signed in as <b>'+esc(user.email||'Apple ID')+'</b></div><div class="row"><button data-act="syncNow">Sync now</button><button data-act="signOut">Sign out</button></div><button class="sm danger" data-act="delAcct">Delete account</button>';
   else h+='<div class="hint">Sign in to back up your data and use it on your iPhone and Mac.</div><button class="apple wide" data-act="apple"> Sign in with Apple</button><div class="row"><input id="acEmail" type="email" placeholder="you@email.com" autocomplete="email"><button data-act="email">Email link</button></div><div class="row hide" id="acCodeRow"><input id="acCode" inputmode="numeric" placeholder="6-digit code"><button data-act="code">Verify</button></div>';
   h+='<div class="hint" id="acSync">'+(user&&!isPro()?'Cloud sync is part of Pro.':'')+'</div>';el.innerHTML=h;}
 function renderSettings(){var r=P.set;$('stEds').checked=r.eds;$('stBsf').checked=r.bsf;$('stProt').checked=r.strengthProt;$('stRem').checked=r.remind.on;$('stWeigh').value=r.remind.weigh;$('stMeals').value=r.remind.meals;
   document.querySelectorAll('.needpro').forEach(function(e){e.classList.toggle('locked',!isPro());});}
-function renderAll(){renderHome();renderFood();renderAccount();renderSettings();renderCoach();var b=$('proBadge');if(b){b.textContent=P.pro.owned?'PRO':trialLeft()>0?'TRIAL '+trialLeft()+'d':'';b.classList.toggle('hide',!b.textContent);}}
+function renderAll(){renderHome();renderFood();renderAccount();renderSettings();renderCoach();renderClients();var b=$('proBadge');if(b){b.textContent=P.pro.owned?'PRO':trialLeft()>0?'TRIAL '+trialLeft()+'d':'';b.classList.toggle('hide',!b.textContent);}}
 
 // ---------- UI shell ----------
 function build(){
@@ -298,7 +368,7 @@ function build(){
   tabs.querySelectorAll('button').forEach(function(b){if(!b.querySelector('span')){var t=b.textContent.trim(),i=t.indexOf(' ');b.innerHTML=t.slice(0,i)+'<span>'+(t.slice(i+1)==='Nutrition'?'Plan':t.slice(i+1))+'</span>';}});
   var hdr=document.querySelector('header h1');hdr.insertAdjacentHTML('beforeend',' <span id="proBadge" class="pill pro hide"></span>');
   var ref=$('tab-nutrition');
-  ref.insertAdjacentHTML('beforebegin','<main id="tab-home" class="hide"></main>'+
+  ref.insertAdjacentHTML('beforebegin','<main id="tab-home" class="hide"></main><main id="tab-coach" class="hide"></main>'+
   '<main id="tab-food" class="hide"><section class="card wide"><div class="row"><button class="sm" id="fPrev" aria-label="Previous day">‹</button><input type="date" id="fDate"><button class="sm" id="fNext" aria-label="Next day">›</button></div><div id="fTotals" style="margin-top:10px"></div></section>'+
    '<section class="card wide"><h2>Add food</h2><div class="row"><input id="fSearch" type="search" placeholder="Search foods or type a barcode" autocomplete="off"><button id="fScan" class="pri" style="flex:0 0 auto" aria-label="Scan barcode">📷 Scan</button></div><div id="fResults"></div>'+
    '<details id="qaBox"><summary>⚡ Quick add (calories / macros)</summary><div class="row f"><div><label>Name</label><input id="qName" placeholder="e.g. Lunch out"></div></div><div class="row f"><div><label>kcal</label><input id="qK" type="number" inputmode="numeric"></div><div><label>Protein g</label><input id="qP" type="number" inputmode="decimal"></div></div><div class="row f"><div><label>Carbs g</label><input id="qC" type="number" inputmode="decimal"></div><div><label>Fat g</label><input id="qF" type="number" inputmode="decimal"></div><div><label>Fiber g</label><input id="qFib" type="number" inputmode="decimal"></div></div><div class="row"><select id="qMeal"><option>Breakfast</option><option>Lunch</option><option>Dinner</option><option>Snack</option></select><button class="pri" id="qAdd">Add</button></div></details></section>'+
@@ -316,9 +386,9 @@ function build(){
   document.body.insertAdjacentHTML('beforeend','<div id="pSheet" class="sheet"><div class="sbg" data-close></div><div class="sbox" id="pSheetBody"></div></div><div id="pToast" class="toast" role="status"></div>');
   // tab switching (wraps the original two-tab logic)
   tabs.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;show(b.getAttribute('data-tab'));});
-  function show(t){['home','food','me'].forEach(function(x){$('tab-'+x).classList.toggle('hide',x!==t);});
-    if(t==='home'||t==='food'||t==='me'){$('tab-nutrition').classList.add('hide');$('tab-workouts').classList.add('hide');tabs.querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-tab')===t);});try{localStorage.setItem('fatLossPlanner.tab',t);}catch(e){}window.scrollTo(0,0);}
-    renderAll();}
+  function show(t){['home','food','me','coach'].forEach(function(x){$('tab-'+x).classList.toggle('hide',x!==t);});
+    if(t==='home'||t==='food'||t==='me'||t==='coach'){$('tab-nutrition').classList.add('hide');$('tab-workouts').classList.add('hide');tabs.querySelectorAll('button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-tab')===t);});try{localStorage.setItem('fatLossPlanner.tab',t);}catch(e){}window.scrollTo(0,0);}
+    renderAll();if(t==='coach'){CO.cur=null;renderClients();coachRefresh();}}
   window.__FLPshow=function(t){var b=tabs.querySelector('[data-tab="'+t+'"]');if(b)b.click();};
   var start=localStorage.getItem('fatLossPlanner.v2seen')?(localStorage.getItem('fatLossPlanner.tab')||'home'):'home';try{localStorage.setItem('fatLossPlanner.v2seen','1');}catch(e){}
   window.__FLPshow(start);
@@ -342,7 +412,7 @@ function build(){
     else if(a==='health')healthSync();else if(a==='restore')restore();else if(a==='apple')appleSignIn();else if(a==='email')emailSignIn();else if(a==='code')codeSignIn();
     else if(a==='signOut'){sb.auth.signOut();}else if(a==='delAcct')deleteAccount();else if(a==='syncNow'){if(needPro('Cloud sync'))pull();}
     else if(a==='export')$('exportBtn').click();else if(a==='import')$('importBtn').click();
-    else if(a==='coachShare')coachShare();else if(a==='coachLink')shareLink();else if(a==='coachStop')coachStop();else if(a==='coachAccept')coachAccept();
+    else if(a&&a.indexOf('co')===0&&coachAct(a,t))return;
     else if(a==='saveMeal'){var nm=prompt('Name this meal','My meal');if(nm){P.meals.push({name:nm,items:dayFood(curDay).map(function(x){return {name:x.name,kcal:x.kcal,p:x.p,c:x.c,f:x.f,fib:x.fib,qty:x.qty};})});saveP();renderFood();toast('Meal saved');}}
   });
   $('fSearch').addEventListener('input',function(){search(this.value);});
