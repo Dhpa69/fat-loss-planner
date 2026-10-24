@@ -39,8 +39,9 @@ function W(){return window.__FLW?window.__FLW.state():null;}
 
 // ---------- Pro / trial ----------
 function trialLeft(){if(!P.pro.trialStart)return 0;var left=TRIAL_DAYS-(Date.now()-P.pro.trialStart)/DAY;return left>0?Math.ceil(left):0;}
-function isPro(){return !!P.pro.owned||trialLeft()>0;}
-function proLabel(){return P.pro.owned?'Pro ✓':trialLeft()>0?'Trial: '+trialLeft()+' day'+(trialLeft()===1?'':'s')+' left':'Free';}
+var WEB_PRO=!NATIVE; // website (GitHub) version: all Pro features unlocked for testing
+function isPro(){return WEB_PRO||!!P.pro.owned||trialLeft()>0;}
+function proLabel(){return WEB_PRO?'Pro ✓ (website — all unlocked)':P.pro.owned?'Pro ✓':trialLeft()>0?'Trial: '+trialLeft()+' day'+(trialLeft()===1?'':'s')+' left':'Free';}
 var NP=PL('NativePurchases'),products={};
 function loadProducts(){if(!NP)return;NP.getProducts({productIdentifiers:[PRO_ID,TRIAL_ID],productType:'inapp'}).then(function(r){(r.products||[]).forEach(function(p){products[p.identifier]=p;});renderPaywall();}).catch(function(){});}
 function applyPurchases(list){var ch=false;(list||[]).forEach(function(p){var id=p.productIdentifier||p.productId;
